@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tactical Fashion Warfare</title>
+    <style>
+        :root { --p-color: #3498db; --c-color: #e74c3c; --bg: #0f172a; }
+        body { font-family: sans-serif; background: var(--bg); color: white; margin: 0; overflow: hidden; }
+        .screen { display: none; width: 100vw; height: 100vh; flex-direction: column; align-items: center; justify-content: center; }
+        .active { display: flex; }
+        
+        button { padding: 12px 30px; font-size: 16px; cursor: pointer; border-radius: 50px; border: none; background: #6366f1; color: white; transition: 0.3s; font-weight: bold; }
+        button:hover { transform: scale(1.05); box-shadow: 0 0 15px rgba(99, 102, 241, 0.6); }
+
+        /* Setup Grid & Sliders */
+        #setup-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 15px; }
+        .unit-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; border: 1px solid var(--p-color); text-align: center; width: 170px; font-size: 12px; }
+        .slider-box { margin: 8px 0; background: rgba(0,0,0,0.2); padding: 5px; border-radius: 5px; }
+        input[type=range] { width: 100%; cursor: pointer; }
+
+        /* Battle Area */
+        #battle-field { position: relative; width: 95vw; height: 55vh; background: #000; border: 3px solid #333; border-radius: 15px; overflow: hidden; }
+        .soldier { position: absolute; font-size: 30px; transition: all 0.1s linear; display: flex; flex-direction: column; align-items: center; width: 50px; }
+        .hp-bar { width: 35px; height: 5px; background: #444; border-radius: 3px; margin-bottom: 2px; }
+        .hp-fill { height: 100%; background: #10b981; }
+        .side-tag { font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 3px; margin-bottom: 2px; }
+        .p-tag { background: var(--p-color); }
+        .c-tag { background: var(--c-color); }
+
+        /* Result */
+        .result-container { display: flex; gap: 20px; width: 80%; }
+        .res-box { flex: 1; background: rgba(255,255,255,0.1); padding: 20px; border-radius: 15px; text-align: center; }
+        .action-btns { position: absolute; bottom: 30px; right: 40px; display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+
+<div id="screen-title" class="screen active">
+    <h1 id="ui-title" style="font-size: 50px;">TACTICAL WARFARE</h1>
+    <select id="lang-select" onchange="updateLanguage()" style="padding:10px; border-radius:5px; background:#1e293b; color:white;">
+        <option value="ja">日本語</option><option value="en">English</option>
+        <option value="it">Italiano</option><option value="de">Deutsch</option>
+        <option value="fr">Français</option><option value="zh">中文</option>
+        <option value="es">Español</option>
+    </select>
+    <br>
+    <button onclick="showSetup()" id="ui-btn-start">START</button>
+</div>
+
+<div id="screen-setup" class="screen">
+    <h2 id="ui-setup-head">UNIT CUSTOMIZE</h2>
+    <div style="margin-bottom: 10px;">
+        <span id="ui-cpu-lv-label">CPU LV:</span>
+        <select id="cpu-lv"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+    </div>
+    <div id="setup-grid"></div>
+    <button onclick="startBattle()" id="ui-btn-deploy">DEPLOY!</button>
+</div>
+
+<div id="screen-battle" class="screen">
+    <h2 id="ui-battle-status">BATTLE!</h2>
+    <div id="battle-field"></div>
+</div>
+
+<div id="screen-result" class="screen">
+    <h1 id="ui-winner" style="font-size: 40px;">WINNER</h1>
+    <div class="result-container">
+        <div class="res-box" style="border-top: 5px solid var(--p-color);"><h3 id="ui-res-player">PLAY</h3><div id="p-kills"></div></div>
+        <div class="res-box" style="border-top: 5px solid var(--c-color);"><h3 id="ui-res-cpu">CPU</h3><div id="c-kills"></div></div>
+    </div>
+    <div class="action-btns">
+        <button onclick="showSetup()" id="ui-btn-next">NEXT</button>
+        <button onclick="location.reload()" id="ui-btn-home" style="background:#444;">HOME</button>
+    </div>
+</div>
+
+<script>
+const LANG_DATA = {
+    ja: { title: "タクティカル・ウォー", start: "開始", setup: "部隊編成", deploy: "出撃！", battle: "開戦！", next: "次へ", home: "戻る", p: "プレイヤー", c: "CPU", win: "プレイヤー勝利！", lose: "CPU勝利...", armor: "服：防御 ↔ 攻撃", weapon: "武器：威力 ↔ 射程", kill: "キル数: " },
+    en: { title: "TACTICAL WARFARE", start: "START", setup: "ARMY SETUP", deploy: "DEPLOY!", battle: "FIGHT!", next: "NEXT", home: "HOME", p: "PLAYER", c: "CPU", win: "PLAYER WINS!", lose: "CPU WINS!", armor: "Armor ↔ AtkPower", weapon: "Dmg ↔ Range", kill: "Kills: " }
+};
+
+const AVATARS = { m: ["👨‍🦱", "🧔", "👱‍♂️", "👨‍🦰", "👨‍🦳"], f: ["👩‍🦱", "👩‍🦳", "👱‍♀️", "👩‍🦰", "👩"] };
+let playerArmy = [];
+let cpuArmy = [];
+let currentLang = 'ja';
+let battleTimer;
+
+function updateLanguage() {
+    currentLang = document.getElementById('lang-select').value;
+    const d = LANG_DATA[currentLang] || LANG_DATA.en;
+    document.getElementById('ui-title').innerText = d.title;
+    document.getElementById('ui-btn-start').innerText = d.start;
+    document.getElementById('ui-setup-head').innerText = d.setup;
+    document.getElementById('ui-btn-deploy').innerText = d.deploy;
+    document.getElementById('ui-btn-next').innerText = d.next;
+    document.getElementById('ui-btn-home').innerText = d.home;
+}
+
+function showSetup() {
+    switchScreen('screen-setup');
+    const d = LANG_DATA[currentLang] || LANG_DATA.en;
+    const container = document.getElementById('setup-grid');
+    container.innerHTML = '';
+    playerArmy = [];
+
+    for (let i = 0; i < 10; i++) {
+        const skin = Math.random() > 0.5 ? AVATARS.m[Math.floor(Math.random()*5)] : AVATARS.f[Math.floor(Math.random()*5)];
+        playerArmy.push({ id: i, skin, armorVal: 50, weaponVal: 50, hp: 100, kills: 0 });
+
+        const card = document.createElement('div');
+        card.className = 'unit-card';
+        card.innerHTML = `
+            <div style="font-size:24px">${skin}</div>
+            <div class="slider-box">
+                <span>${d.armor}</span>
+                <input type="range" min="10" max="90" value="50" oninput="playerArmy[${i}].armorVal=this.value">
+            </div>
+            <div class="slider-box">
+                <span>${d.weapon}</span>
+                <input type="range" min="10" max="90" value="50" oninput="playerArmy[${i}].weaponVal=this.value">
+            </div>
+        `;
+        container.appendChild(card);
+    }
+}
+
+function startBattle() {
+    switchScreen('screen-battle');
+    const lv = parseInt(document.getElementById('cpu-lv').value);
+    cpuArmy = [];
+    for(let i=0; i<10; i++) {
+        const skin = Math.random() > 0.5 ? AVATARS.m[Math.floor(Math.random()*5)] : AVATARS.f[Math.floor(Math.random()*5)];
+        // CPUはランダムまたはレベルに応じた設定（CPUの攻撃力はプレイヤーより少し控えめにする）
+        cpuArmy.push({ id: i+10, skin, armorVal: 40+Math.random()*20, weaponVal: 40+Math.random()*20, hp: 100, kills: 0, x: 800, y: i*35+50, side:'c'});
+    }
+    
+    playerArmy.forEach((u, i) => { u.x = 80; u.y = i*35+50; u.side = 'p'; u.hp = 100; u.kills = 0; });
+    battleTimer = setInterval(updateBattle, 70);
+}
+
+function updateBattle() {
+    const field = document.getElementById('battle-field');
+    field.innerHTML = '';
+    const aliveP = playerArmy.filter(u => u.hp > 0);
+    const aliveC = cpuArmy.filter(u => u.hp > 0);
+
+    if (aliveP.length === 0) return endBattle("CPU");
+    if (aliveC.length === 0) return endBattle("PLAYER");
+
+    [...aliveP, ...aliveC].forEach(u => {
+        const targets = u.side === 'p' ? aliveC : aliveP;
+        let target = targets.reduce((prev, curr) => {
+            let d1 = Math.hypot(u.x - prev.x, u.y - prev.y);
+            let d2 = Math.hypot(u.x - curr.x, u.y - curr.y);
+            return d1 < d2 ? prev : curr;
+        });
+
+        let dist = Math.hypot(u.x - target.x, u.y - target.y);
+        
+        // メーター連動ロジック
+        // 服：防御が高いほど(armorVal大)、攻撃倍率が下がる(atk_mul小)
+        const def = u.armorVal / 5;
+        const atk_mul = (100 - u.armorVal) / 10;
+        
+        // 武器：威力が高いほど(weaponVal大)、射程が短くなる(range小)
+        const dmg_base = u.weaponVal / 4;
+        const range = (100 - u.weaponVal) * 8; // 武器メーター10なら射程720, 90なら射程80
+
+        if (dist > range) {
+            u.x += (target.x - u.x) / dist * 5;
+            u.y += (target.y - u.y) / dist * 5;
+        } else {
+            // CPUの攻撃力をプレイヤーより少し弱く (x 0.8)
+            const cpuFactor = (u.side === 'c') ? 0.8 : 1.0;
+            let finalDmg = (dmg_base * atk_mul * cpuFactor) / (target.armorVal / 5);
+            target.hp -= finalDmg;
+            if (target.hp <= 0) u.kills++;
+        }
+
+        const div = document.createElement('div');
+        div.className = 'soldier';
+        div.style.left = u.x + 'px';
+        div.style.top = u.y + 'px';
+        const icon = range > 150 ? "🔫" : "⚔️";
+        div.innerHTML = `
+            <div class="side-tag ${u.side === 'p' ? 'p-tag' : 'c-tag'}">${u.side==='p'?'PLAY':'CPU'}</div>
+            <div class="hp-bar"><div class="hp-fill" style="width:${u.hp}%"></div></div>
+            <span>${u.skin}${icon}</span>
+        `;
+        field.appendChild(div);
+    });
+}
+
+function endBattle(winner) {
+    clearInterval(battleTimer);
+    switchScreen('screen-result');
+    const d = LANG_DATA[currentLang] || LANG_DATA.en;
+    document.getElementById('ui-winner').innerText = winner === "PLAYER" ? d.win : d.lose;
+    document.getElementById('p-kills').innerText = d.kill + playerArmy.reduce((s,u)=>s+u.kills,0);
+    document.getElementById('c-kills').innerText = d.kill + cpuArmy.reduce((s,u)=>s+u.kills,0);
+}
+
+function switchScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+}
+
+updateLanguage();
+</script>
+</body>
+</html>
